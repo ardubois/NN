@@ -10,20 +10,24 @@ defmodule NN do
   defn relu2deriv(output) do
     Nx.greater(output,0)
   end
-  def runNet(input,[weights_l],target,lr) do
+  def runNet(input,[weights_l],target,lr,error) do
     o = Nx.dot(input,weights_l)
+    IO.inspect(o)
     finalDerivative = finalD(o,target)
+    errorFinal = sumTensors( error, Nx.sum(Nx.power(finalDerivative,2)))
+    IO.inspect finalDerivative
+    IO.inspect error
     newWeights = genNewWeights(weights_l,lr,input,finalDerivative)
     nextLayerD = Nx.dot(finalDerivative,Nx.transpose(weights_l))
-    {newWeights,nextLayerD}
+    {newWeights,nextLayerD,errorFinal}
   end
-  def runNet(input,[w|tl],target,lr) do
+  def runNet(input,[w|tl],target,lr,error) do
     o =  relu(Nx.dot(input,w))
-    {net,wD} = runNet(o,tl,target,lr)
+    {net,wD,errorFinal} = runNet(o,tl,target,lr,error)
     myDeriv = layerD(wD,relu2deriv(o))
     newWeights = genNewWeights(w,lr,input,myDeriv)
     nextLayerD = Nx.dot(myDeriv,Nx.transpose(w))
-    {[newWeights|net],nextLayerD}
+    {[newWeights|net],nextLayerD,errorFinal}
   end
 
   defn layerD(wD,output) do
@@ -34,6 +38,9 @@ defmodule NN do
   end
   defn finalD(output,target) do
      output - target
+  end
+  defn sumTensors(t1,t2) do
+    t1 + t2
   end
   def newDenseLayer(x,y,type) do
    fitWeights(Nx.random_uniform({x, y}, 0.0, 1.0, type: {:f, 64}))
@@ -85,8 +92,11 @@ target = sl_target[0..0]
 o = Nx.dot(input1,weights_0_1)
 
 #IO.puts o
-{newNet,d} = NN.runNet(sl_input,nn,sl_target,alpha)
+{newNet,d,errorFinal} = NN.runNet(input1,nn,target,alpha,Nx.tensor(0))
+
+IO.puts "Error final:"
+IO.inspect errorFinal
 
 [head|tail] = newNet
 
-IO.puts head
+IO.inspect head
