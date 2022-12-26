@@ -12,10 +12,10 @@ defmodule NN do
   end
   def runNet(input,[weights_l],target,lr) do
     o = Nx.dot(input,weights_l)
-    finalDerivative = finalD(o,target)
+    finalDerivative = sub(o,target)
     error =  Nx.sum(Nx.power(finalDerivative,2))
-    IO.puts("error")
-    IO.inspect error
+    #IO.puts("error")
+    #IO.inspect error
     newWeights = genNewWeights(weights_l,lr,input,finalDerivative)
     nextLayerD = Nx.dot(finalDerivative,Nx.transpose(weights_l))
     {[newWeights],nextLayerD,error}
@@ -41,7 +41,7 @@ defmodule NN do
     tinput  = input[1..-1//1] # Drop the first "row"
     ttarget = target[1..-1//1] # Drop the first "row"
     {finalNet,errorsofar} = trainNN(n-1,tinput,net,ttarget,lr)
-    myError = sumTensors(newError,errorsofar)
+    myError = sum(newError,errorsofar)
     {finalNet,myError}
   end
 
@@ -52,10 +52,10 @@ defmodule NN do
   defn genNewWeights(weights,lr,layer,der) do
       weights - (lr*Nx.dot(Nx.transpose(layer),der))
   end
-  defn finalD(output,target) do
+  defn sub(output,target) do
      output - target
   end
-  defn sumTensors(t1,t2) do
+  defn sum(t1,t2) do
     t1 + t2
   end
   def newDenseLayer(x,y,type) do
@@ -64,6 +64,17 @@ defmodule NN do
 
   defn fitWeights(w) do
     2*w-1
+  end
+  def loop(1,ntrain,input,nn,target,lr) do
+    {newnet,error}=trainNN(ntrain,input,nn,target,lr)
+    {newnet,error}
+  end
+  def loop(n,ntrain, input,nn,target,lr) do
+    {newnet,error}=trainNN(ntrain,input,nn,target,lr)
+    IO.puts "Error"
+    IO.inspect error
+    r = loop(n-1,ntrain,input,newnet,target,lr)
+    r
   end
 end
 
@@ -86,12 +97,12 @@ weights_1_2 = Nx.tensor([[ 0.07763347],
 
 
 w0_ = Nx.tensor( [[-0.16595599,  0.44064899, -0.99977125, -0.39533485],
-[-0.70648822, -0.81532281, -0.62747958 ,-0.30887855],
-[-0.20646505 , 0.07763347 ,-0.16161097 , 0.370439  ]])
+                  [-0.70648822, -0.81532281, -0.62747958 ,-0.30887855],
+                  [-0.20646505 , 0.07763347 ,-0.16161097 , 0.370439  ]])
 w1_ = Nx.tensor([[-0.5910955 ],
- [ 0.75623487],
-[-0.94522481],
-[ 0.34093502]])
+                  [ 0.75623487],
+                  [-0.94522481],
+                  [ 0.34093502]])
 #nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
 #      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
@@ -116,11 +127,17 @@ target1 = sl_target[0..0]
 #{newNet,d,errorFinal} = NN.runNet(input1,nn,target1,alpha)
 
 
-{newNet,errorFinal} = NN.trainNN(4,sl_input,nn2_,sl_target,alpha)
+#{newNet,errorFinal} = NN.trainNN(4,sl_input,nn2_,sl_target,alpha)
+
+{newNet,errorFinal} = NN.loop(10,4, sl_input,nn2_,sl_target,alpha)
 
 IO.puts "Error final:"
 IO.inspect errorFinal
 
 [head|tail_] = newNet
 
-IO.inspect head
+[tt_] = tail_
+
+#IO.inspect head
+
+#IO.inspect tt_
