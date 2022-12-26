@@ -78,9 +78,6 @@ defmodule NN do
   end
 end
 
-#t = Nx.tensor([[99, -1], [3, -7]])
-
-#IO.puts NN.relu(t)
 
 #inputSize = 3
 #hiddenSize = 4
@@ -107,7 +104,7 @@ w1_ = Nx.tensor([[-0.5910955 ],
 #      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
 
-nn = [weights_0_1,weights_1_2]
+#nn = [weights_0_1,weights_1_2]
 
 nn2_ = [w0_,w1_]
 
@@ -120,16 +117,43 @@ sl_target = Nx.transpose(Nx.tensor([[1, 1, 0, 0]]))
 
 
 
-input1 = sl_input[0..0]
+#input1 = sl_input[0..0]
 
-target1 = sl_target[0..0]
+#target1 = sl_target[0..0]
 
 #{newNet,d,errorFinal} = NN.runNet(input1,nn,target1,alpha)
 
 
 #{newNet,errorFinal} = NN.trainNN(4,sl_input,nn2_,sl_target,alpha)
 
-{newNet,errorFinal} = NN.loop(10,4, sl_input,nn2_,sl_target,alpha)
+#{newNet,errorFinal} = NN.loop(10,4, sl_input,nn2_,sl_target,alpha)
+
+
+### MNIST
+
+labels = Nx.from_numpy("labelsMNIST.npy")
+images = Nx.from_numpy("imagesMNIST.npy")
+
+input1 = images[0..0]
+
+target1 = labels[0..0]
+
+IO.puts "entrada e label"
+IO.inspect input1
+IO.inspect target1
+
+inputSize = 784 #pixels per image
+hiddenSize = 40
+outputSize = 10
+alpha = 0.005
+
+nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
+      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
+
+
+#{newNet,d,errorFinal} = NN.runNet(images,nn,labels,alpha)
+
+{newNet,errorFinal} = NN.trainNN(100,images,nn,labels,alpha)
 
 IO.puts "Error final:"
 IO.inspect errorFinal
@@ -141,3 +165,6 @@ IO.inspect errorFinal
 #IO.inspect head
 
 #IO.inspect tt_
+
+#labels = Nx.from_numpy("labels.npy")
+#images = Nx.from_numpy("images.npy")
