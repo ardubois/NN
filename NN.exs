@@ -30,6 +30,8 @@ defmodule NN do
   end
   def runNet(input,[w|tl],target,lr) do
     o =  relu(Nx.dot(input,w))
+    #IO.inspect o
+    #raise "oi"
     {net,wD,error,correct} = runNet(o,tl,target,lr)
     myDeriv = mult(wD,relu2deriv(o))
     #IO.inspect(relu2deriv(o))
@@ -54,11 +56,6 @@ defmodule NN do
     input1 = input[0..0]
     target1 = target[0..0]
     {net,wD,newError,correct} = runNet(input1,nn,target1,lr)
-    if(Nx.to_number(correct)==1)do
-     # IO.puts(n)
-
-      #raise "end"
-    end
     tinput  = input[1..-1//1] # Drop the first "row"
     ttarget = target[1..-1//1] # Drop the first "row"
     {finalNet,errorsofar,correctsofar} = trainNN(n-1,tinput,net,ttarget,lr)
@@ -98,44 +95,70 @@ defmodule NN do
     r = loop(n-1,ntrain,input,newnet,target,lr)
     r
   end
+  def dotP(vet,matrix) do
+    {r_,c} = Nx.shape(matrix)
+    #IO.inspect(vet)
+    #IO.inspect(matrix)
+    #raise "ok"
+    list1 = parallelDot(c,vet,Nx.transpose(matrix))
+    list2 = Enum.map(list1,&Task.await/1)
+    listf = Enum.map(list2,fn(n) ->  Nx.to_number(n[0][0]) end)
+    Nx.tensor([listf])
+  end
+  def parallelDot(1,vet,matrix) do
+    row = matrix[0..0]
+    task = Task.async(fn -> Nx.dot(vet,Nx.transpose(row)) end)
+    [task]
+  end
+  def parallelDot(n,vet,matrix) do
+    row = matrix[0..0]
+    restMatrix  = matrix[1..-1//1] # Drop the first "row"
+    #IO.inspect(vet)
+    #IO.inspect(row)
+    #raise "ok"
+    #task =Nx.dot(vet,Nx.transpose(row))
+    task = Task.async(fn -> Nx.dot(vet,Nx.transpose(row)) end)
+    tasks = parallelDot(n-1,vet,restMatrix)
+    [task|tasks]
+  end
 end
 
 
 #inputSize = 3
 #hiddenSize = 4
 #outputSize = 1
-alpha = 0.005
-weights_0_1 = Nx.tensor ( [[-0.16595599,  0.40763847, -0.99977125],
-                            [-0.39533485, -0.70648822, -0.81532281],
-                            [-0.62747958 ,-0.34188906 ,-0.20646505]]) #NN.newDenseLayer(inputSize,hiddenSize,:relu)
+#alpha = 0.005
+#weights_0_1 = Nx.tensor ( [[-0.16595599,  0.40763847, -0.99977125],
+#                            [-0.39533485, -0.70648822, -0.81532281],
+#                            [-0.62747958 ,-0.34188906 ,-0.20646505]]) #NN.newDenseLayer(inputSize,hiddenSize,:relu)
+#
+
+#weights_1_2 = Nx.tensor([[ 0.07763347],
+#                          [-0.16161097],
+#                          [ 0.370439  ]])#NN.newDenseLayer(hiddenSize,outputSize,:relu)
 
 
-weights_1_2 = Nx.tensor([[ 0.07763347],
-                          [-0.16161097],
-                          [ 0.370439  ]])#NN.newDenseLayer(hiddenSize,outputSize,:relu)
-
-
-w0_ = Nx.tensor( [[-0.16595599,  0.44064899, -0.99977125, -0.39533485],
-                  [-0.70648822, -0.81532281, -0.62747958 ,-0.30887855],
-                  [-0.20646505 , 0.07763347 ,-0.16161097 , 0.370439  ]])
-w1_ = Nx.tensor([[-0.5910955 ],
-                  [ 0.75623487],
-                  [-0.94522481],
-                  [ 0.34093502]])
+#w0_ = Nx.tensor( [[-0.16595599,  0.44064899, -0.99977125, -0.39533485],
+#                  [-0.70648822, -0.81532281, -0.62747958 ,-0.30887855],
+#                  [-0.20646505 , 0.07763347 ,-0.16161097 , 0.370439  ]])
+#w1_ = Nx.tensor([[-0.5910955 ],
+#                  [ 0.75623487],
+#                  [-0.94522481],
+#                  [ 0.34093502]])
 #nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
 #      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
 
 #nn = [weights_0_1,weights_1_2]
 
-nn2_ = [w0_,w1_]
+#nn2_ = [w0_,w1_]
 
-sl_input = Nx.tensor([  [ 1, 0, 1],
-                        [ 0, 1, 1],
-                        [ 0, 0, 1],
-                        [ 1, 1, 1] ])
+#sl_input = Nx.tensor([  [ 1, 0, 1],
+#                        [ 0, 1, 1],
+#                        [ 0, 0, 1],
+#                        [ 1, 1, 1] ])
 
-sl_target = Nx.transpose(Nx.tensor([[1, 1, 0, 0]]))
+#sl_target = Nx.transpose(Nx.tensor([[1, 1, 0, 0]]))
 
 
 
@@ -163,7 +186,7 @@ target1 = labels[0..0]
 #labels = Nx.as_type(labels,{:u, 8})
 #images = Nx.as_type(images,{:u, 8})
 inputSize = 784 #pixels per image
-hiddenSize = 40
+hiddenSize = 40#360#180#40
 outputSize = 10
 alpha = 0.005
 
@@ -172,7 +195,7 @@ w12 = Nx.from_numpy("w12.npy")
 
 nn = [w01,w12]
 #nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
-#      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
+ #     NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
 
 [w1_|tail_] = nn
@@ -185,7 +208,7 @@ time1 = Time.utc_now()
 
 #{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
 
-{newNet,errorFinal,correct} = NN.loop(20,1000,images,nn,labels,alpha)
+{newNet,errorFinal,correct} = NN.loop(1,1000,images,nn,labels,alpha)
 
 time2 = Time.utc_now()
 
@@ -193,13 +216,13 @@ timef = Time.diff(time2,time1)
 
 IO.inspect timef
 
-IO.puts "Correct"
-correct_ = Nx.to_number(correct)
-IO.puts correct_
-IO.puts "Error final:"
-IO.inspect errorFinal
+#IO.puts "Correct"
+#correct_ = Nx.to_number(correct)
+#IO.puts correct_
+#IO.puts "Error final:"
+#IO.inspect errorFinal
 
-[head|tail_] = newNet
+#[head|tail_] = newNet
 
 #[tt_] = tail_
 
