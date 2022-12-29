@@ -65,7 +65,7 @@ defmodule NN do
 
     myError = Nx.add(newError,errorsofar)
     myCorrect = Nx.add(correct,correctsofar)# correct+correctsofar
-    IO.inspect(myCorrect)
+    #IO.inspect(myCorrect)
     {finalNet,myError,myCorrect}
   end
   defn mult(wD,output) do
@@ -86,13 +86,15 @@ defmodule NN do
     0.2*w-0.1
   end
   def loop(1,ntrain,input,nn,target,lr) do
-    {newnet,error}=trainNN(ntrain,input,nn,target,lr)
-    {newnet,error}
+    {newnet,error,correct}=trainNN(ntrain,input,nn,target,lr)
+    IO.puts("I #{1} error: #{Nx.to_number(error)/ntrain} Acc: #{Nx.to_number(correct)/ntrain}")
+    {newnet,error,correct}
   end
   def loop(n,ntrain, input,nn,target,lr) do
-    {newnet,error}=trainNN(ntrain,input,nn,target,lr)
+    {newnet,error,correct}=trainNN(ntrain,input,nn,target,lr)
    # IO.puts "Error"
     #IO.inspect error
+    IO.puts("I #{n} error: #{Nx.to_number(error)/ntrain} Acc: #{Nx.to_number(correct)/ntrain}")
     r = loop(n-1,ntrain,input,newnet,target,lr)
     r
   end
@@ -181,7 +183,9 @@ nn = [w01,w12]
 
 time1 = Time.utc_now()
 
-{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
+#{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
+
+{newNet,errorFinal,correct} = NN.loop(20,1000,images,nn,labels,alpha)
 
 time2 = Time.utc_now()
 
