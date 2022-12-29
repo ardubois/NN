@@ -1,9 +1,18 @@
 Mix.install([
-  {:nx, "~> 0.1.0"}
+  {:nx, "~> 0.4.0"},
+  {:torchx, "~> 0.4.0"},
+  {:exla, "~> 0.4"}
 ])
 
+Nx.default_backend(Torchx.Backend)
+#Nx.default_backend(EXLA.Backend)
+# Sets the global compilation options
+#Nx.Defn.global_default_options(compiler: EXLA)
+# Sets the process-level compilation options
+#Nx.Defn.default_options(compiler: EXLA)
 defmodule NN do
   import Nx.Defn
+ # Nx.default_backend(Torchx)
   defn relu(x) do
     Nx.max(x,0)
   end
@@ -12,46 +21,57 @@ defmodule NN do
   end
   def runNet(input,[weights_l],target,lr) do
     o = Nx.dot(input,weights_l)
-    finalDerivative = sub(o,target)
+    finalDerivative = sub(target,o)
     error =  Nx.sum(Nx.power(finalDerivative,2))
-    #IO.puts("error")
-    #IO.inspect error
+    correct = Nx.as_type(Nx.equal(Nx.argmax(o),Nx.argmax(target)),{:u, 32})
     newWeights = genNewWeights(weights_l,lr,input,finalDerivative)
     nextLayerD = Nx.dot(finalDerivative,Nx.transpose(weights_l))
-    {[newWeights],nextLayerD,error}
+    {[newWeights],nextLayerD,error,correct}
   end
   def runNet(input,[w|tl],target,lr) do
     o =  relu(Nx.dot(input,w))
-    {net,wD,error} = runNet(o,tl,target,lr)
-    myDeriv = layerD(wD,relu2deriv(o))
+    {net,wD,error,correct} = runNet(o,tl,target,lr)
+    myDeriv = mult(wD,relu2deriv(o))
+    #IO.inspect(relu2deriv(o))
     newWeights = genNewWeights(w,lr,input,myDeriv)
-    nextLayerD = Nx.dot(myDeriv,Nx.transpose(w))
-    {[newWeights|net],nextLayerD,error}
+    #IO.inspect(Nx.sum(newWeights))
+    #nextLayerD = Nx.dot(myDeriv,Nx.transpose(w))
+    {[newWeights|net],0,error,correct}
+  end
+  defn genNewWeights(weights,lr,layer,der) do
+    weights + (lr*Nx.dot(Nx.transpose(layer),der))
   end
   def trainNN(1, input, nn,target,lr) do
     input1 = input[0..0]
     target1 = target[0..0]
-    {net,wD,error} = runNet(input1,nn,target1,lr)
-    {net,error}
+   # IO.puts "saida do train"
+    #IO.inspect(input1)
+    #IO.inspect(target1)
+    {net,wD,error,correct} = runNet(input1,nn,target1,lr)
+    {net,error,correct}
   end
   def trainNN(n,input,nn,target,lr) do
     input1 = input[0..0]
     target1 = target[0..0]
-    {net,wD,newError} = runNet(input1,nn,target1,lr)
+    {net,wD,newError,correct} = runNet(input1,nn,target1,lr)
+    if(Nx.to_number(correct)==1)do
+     # IO.puts(n)
+
+      #raise "end"
+    end
     tinput  = input[1..-1//1] # Drop the first "row"
     ttarget = target[1..-1//1] # Drop the first "row"
-    {finalNet,errorsofar} = trainNN(n-1,tinput,net,ttarget,lr)
-    myError = sum(newError,errorsofar)
-    {finalNet,myError}
+    {finalNet,errorsofar,correctsofar} = trainNN(n-1,tinput,net,ttarget,lr)
+
+    myError = Nx.add(newError,errorsofar)
+    myCorrect = Nx.add(correct,correctsofar)# correct+correctsofar
+    IO.inspect(myCorrect)
+    {finalNet,myError,myCorrect}
   end
-
-
-  defn layerD(wD,output) do
+  defn mult(wD,output) do
         wD*output
   end
-  defn genNewWeights(weights,lr,layer,der) do
-      weights - (lr*Nx.dot(Nx.transpose(layer),der))
-  end
+
   defn sub(output,target) do
      output - target
   end
@@ -63,7 +83,7 @@ defmodule NN do
   end
 
   defn fitWeights(w) do
-    2*w-1
+    0.2*w-0.1
   end
   def loop(1,ntrain,input,nn,target,lr) do
     {newnet,error}=trainNN(ntrain,input,nn,target,lr)
@@ -71,8 +91,8 @@ defmodule NN do
   end
   def loop(n,ntrain, input,nn,target,lr) do
     {newnet,error}=trainNN(ntrain,input,nn,target,lr)
-    IO.puts "Error"
-    IO.inspect error
+   # IO.puts "Error"
+    #IO.inspect error
     r = loop(n-1,ntrain,input,newnet,target,lr)
     r
   end
@@ -82,7 +102,7 @@ end
 #inputSize = 3
 #hiddenSize = 4
 #outputSize = 1
-alpha = 0.2
+alpha = 0.005
 weights_0_1 = Nx.tensor ( [[-0.16595599,  0.40763847, -0.99977125],
                             [-0.39533485, -0.70648822, -0.81532281],
                             [-0.62747958 ,-0.34188906 ,-0.20646505]]) #NN.newDenseLayer(inputSize,hiddenSize,:relu)
@@ -138,29 +158,46 @@ input1 = images[0..0]
 
 target1 = labels[0..0]
 
-IO.puts "entrada e label"
-IO.inspect input1
-IO.inspect target1
-
+#labels = Nx.as_type(labels,{:u, 8})
+#images = Nx.as_type(images,{:u, 8})
 inputSize = 784 #pixels per image
 hiddenSize = 40
 outputSize = 10
 alpha = 0.005
 
-nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
-      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
+w01 = Nx.from_numpy("w01.npy")
+w12 = Nx.from_numpy("w12.npy")
+
+nn = [w01,w12]
+#nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
+#      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
 
-#{newNet,d,errorFinal} = NN.runNet(images,nn,labels,alpha)
+[w1_|tail_] = nn
 
-{newNet,errorFinal} = NN.trainNN(100,images,nn,labels,alpha)
+#IO.puts "weights"
+#IO.inspect w1
+#{newNet,d,errorFinal,correct} = NN.runNet(input1,nn,target1,alpha)
 
+time1 = Time.utc_now()
+
+{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
+
+time2 = Time.utc_now()
+
+timef = Time.diff(time2,time1)
+
+IO.inspect timef
+
+IO.puts "Correct"
+correct_ = Nx.to_number(correct)
+IO.puts correct_
 IO.puts "Error final:"
 IO.inspect errorFinal
 
 [head|tail_] = newNet
 
-[tt_] = tail_
+#[tt_] = tail_
 
 #IO.inspect head
 
