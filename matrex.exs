@@ -13,7 +13,7 @@ Nx.default_backend(Torchx.Backend)
 # Sets the process-level compilation options
 #Nx.Defn.default_options(compiler: EXLA)
 defmodule NN do
-  import Nx.Defn
+  #import Nx.Defn
  # Nx.default_backend(Torchx)
   def relu(x) do
     Matrex.apply(x,fn(n)-> if (n>0) do n else 0 end end)
@@ -23,7 +23,9 @@ defmodule NN do
     #Nx.greater(output,0)
   end
   def runNet(input,[weights_l],target,lr) do
-    o = Matrex.dot(input,weights_l)
+    #IO.inspect(weights_l)
+    #raise "hell"
+    o = dotPSize(1000,input,weights_l)
     finalDerivative = Matrex.subtract(target,o)
     error =  Matrex.sum(Matrex.apply(finalDerivative,fn(n)-> n**2 end))
     correct = if (Matrex.argmax(o)==Matrex.argmax(target)) do 1 else 0 end
@@ -124,6 +126,71 @@ defmodule NN do
     tasks = parallelDot(n-1,vet,restMatrix)
     [task|tasks]
   end
+  def dotPSize(size,vet,matrix) do
+     list_ = parallelDotSize2(size,vet,matrix)
+  #  #raise "ok"
+     list__ = List.flatten(list_)
+     #IO.inspect(list1)
+     #raise "list_: #{length list_} list1: #{length list1}"
+     list1 = Enum.map(list__,&Task.await/1)
+     list2 = List.flatten(list1)
+     #IO.inspect list2
+     #raise "list2 size: #{length(list2)}"
+     listf = Matrex.concat(list2)#Enum.map(list2,fn(n) ->  Matrex.at(n,1,1) end)
+     listf
+     #Matrex.new([listf])
+  end
+  def parallelDotSize2(n,vet,matrix) do
+    {nl,nc}=Matrex.size(matrix)
+    if (nc>n) do
+      subMatrix = Matrex.submatrix(matrix,1..nl,1..n)
+      #IO.inspect list
+      #raise "hell"
+      #if (length(list) != 5) do raise "size" end
+      task = Task.async(fn -> Matrex.dot(vet,subMatrix) end)
+      restMatrix = Matrex.submatrix(matrix,1..nl,(n+1)..nc)
+      tasks = parallelDotSize2(n,vet,restMatrix)
+      [ task, tasks]
+    else
+      #list = getColumns(matrix,nc)
+      #raise "fuck"
+      task = Task.async(fn -> Matrex.dot(vet,matrix) end)
+      #restMatrix = Matrex.submatrix(matrix,1..nl,(n+1)..nc)
+      #tasks = parallelDotSize(n,vet,restMatrix)
+      [task]
+    end
+  end
+  def parallelDotSize(n,vet,matrix) do
+    {nl,nc}=Matrex.size(matrix)
+    if (nc>n) do
+      list = getColumns(matrix,n)
+      #IO.inspect list
+      #raise "hell"
+      #if (length(list) != 5) do raise "size" end
+      task = Task.async(fn -> Enum.map(list, fn(col) -> Matrex.dot(vet,col) end) end)
+      restMatrix = Matrex.submatrix(matrix,1..nl,(n+1)..nc)
+      tasks = parallelDotSize(n,vet,restMatrix)
+      [ task, tasks]
+    else
+      list = getColumns(matrix,nc)
+      #raise "fuck"
+      task = Task.async(fn -> Enum.map(list, fn(col) -> Matrex.dot(vet,col) end) end)
+      #restMatrix = Matrex.submatrix(matrix,1..nl,(n+1)..nc)
+      #tasks = parallelDotSize(n,vet,restMatrix)
+      [task]
+    end
+  end
+  def getColumns(matrix,1)do
+    col = Matrex.column(matrix,1)
+    [col]
+  end
+  def getColumns(matrix,ncol)do
+    col = Matrex.column(matrix,1)
+    {nl,nc}=Matrex.size(matrix)
+    restMatrix = Matrex.submatrix(matrix,1..nl,2..nc)
+    cols =getColumns(restMatrix,ncol-1)
+    [col|cols]
+  end
 end
 
 
@@ -146,21 +213,21 @@ w1_ = Matrex.load("w12.csv")
 #nn = [w0_,w1_]
 
 inputSize = 784 #pixels per image
-hiddenSize = 40#180#40
+hiddenSize = 2880#1440#720#360#40#360#180#40
 outputSize = 10
 alpha = 0.005
 nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
       NN.newDenseLayer(hiddenSize,outputSize,:relu)]
 
-[wh|wt] =nn
+#[wh|wt] =nn
 
-IO.inspect(wh)
+#IO.inspect(wh)
 
 #nn = [weights_0_1,weights_1_2]
 
 
-IO.inspect(w0_)
-IO.inspect(w1_)
+#IO.inspect(w0_)
+#IO.inspect(w1_)
 
 
 sl_input = Matrex.new([  [ 1, 0, 1],
@@ -175,6 +242,14 @@ sl_target = Matrex.transpose(Matrex.new([[1, 1, 0, 0]]))
 images = Matrex.load("imgMNIST.csv")
 labels = Matrex.load("tarMNIST.csv")
 
+input1 = images[1]
+
+#r = NN.dotPSize(5,input1,wh)
+
+#IO.inspect input1
+#IO.inspect wh
+#IO.inspect r
+#raise "ok"
 #IO.inspect(input1)
 #IO.inspect(target1)
 #raise "o"
@@ -185,7 +260,7 @@ labels = Matrex.load("tarMNIST.csv")
 
 #{newNet,errorFinal,correct} = NN.loop(100,1000,images,nn,labels,alpha)
 
-{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[100,1000,images,nn,labels,alpha])
+{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[1,1000,images,nn,labels,alpha])
 
 IO.puts ("time: #{time/(1_000_000)}")
 
