@@ -100,24 +100,28 @@ defmodule NN do
     #IO.inspect(vet)
     #IO.inspect(matrix)
     #raise "ok"
-    list1 = parallelDot(c,vet,Nx.transpose(matrix))
+    list1 = parallelDot(c,vet,matrix)
+    #raise "ok"
     list2 = Enum.map(list1,&Task.await/1)
     listf = Enum.map(list2,fn(n) ->  Nx.to_number(n[0][0]) end)
     Nx.tensor([listf])
   end
   def parallelDot(1,vet,matrix) do
-    row = matrix[0..0]
-    task = Task.async(fn -> Nx.dot(vet,Nx.transpose(row)) end)
+    row = matrix[[..,0..0]]
+    task = Task.async(fn -> Nx.dot(vet,row) end)
+    #raise "ok"
     [task]
   end
   def parallelDot(n,vet,matrix) do
-    row = matrix[0..0]
-    restMatrix  = matrix[1..-1//1] # Drop the first "row"
+    row = matrix[[..,0..0]]
+    restMatrix  = matrix[[..,1..-1//1]] # Drop the first "row"
     #IO.inspect(vet)
     #IO.inspect(row)
     #raise "ok"
-    #task =Nx.dot(vet,Nx.transpose(row))
-    task = Task.async(fn -> Nx.dot(vet,Nx.transpose(row)) end)
+    #task =Nx.dot(vet,row)
+    #IO.inspect(task)
+    #raise "ok"
+    task = Task.async(fn -> Nx.dot(vet,row) end)
     tasks = parallelDot(n-1,vet,restMatrix)
     [task|tasks]
   end
@@ -186,7 +190,7 @@ target1 = labels[0..0]
 #labels = Nx.as_type(labels,{:u, 8})
 #images = Nx.as_type(images,{:u, 8})
 inputSize = 784 #pixels per image
-hiddenSize = 40#360#180#40
+hiddenSize = 360#360#180#40
 outputSize = 10
 alpha = 0.005
 
