@@ -104,12 +104,25 @@ defmodule NN do
     r = loop(n-1,ntrain,input,newnet,target,lr)
     r
   end
-  def loopPBatch(1,ntrain,input,nn,target,lr) do
+  def loopBatch(1,nb,ntrain,input,nn,target,lr) do
+    {newnet,wd,error,correct}=trainPBatch(nb,ntrain,input,nn,target,lr)
+    #IO.puts("I #{1} error: #{error/ntrain} Acc: #{correct/ntrain}")
+    {newnet,error,correct}
+  end
+  def loopBatch(n,nb,ntrain, input,nn,target,lr) do
+    {newnet,wd,error,correct}=trainPBatch(nb,ntrain,input,nn,target,lr)
+   # IO.puts "Error"
+    #IO.inspect error
+    #IO.puts("I #{n} error: #{(error)/ntrain} Acc: #{correct/ntrain}")
+    r = loopBatch(n-1,nb,ntrain,input,newnet,target,lr)
+    r
+  end
+  def trainPBatch(1,ntrain,input,nn,target,lr) do
     {newnet,wd1,error,correct}= run_batchWL(ntrain,input,nn,target,lr)
-    IO.puts("I #{1} error: #{error/ntrain} Acc: #{correct/ntrain}")
+    #IO.puts("I #{1} error: #{error/ntrain} Acc: #{correct/ntrain}")
     {newnet,wd1,error,correct}
   end
-  def loopPBatch(n,ntrain, input,nn,target,lr) do
+  def trainPBatch(n,ntrain, input,nn,target,lr) do
     {newnet,wd1,error,correct}=run_batchWL(ntrain,input,nn,target,lr)
    # IO.puts "Error"
     #IO.inspect error
@@ -119,8 +132,8 @@ defmodule NN do
   #  IO.inspect {tl,tc}
     restinput = Matrex.submatrix(input,(ntrain+1)..il,1..ic)
     resttarget = Matrex.submatrix(target,(ntrain+1)..tl,1..tc)
-    IO.puts("I #{n} error: #{(error)/ntrain} Acc: #{correct/ntrain}")
-    r = loopPBatch(n-1,ntrain,restinput,newnet,resttarget,lr)
+    #IO.puts("I #{n} error: #{(error)/ntrain} Acc: #{correct/ntrain}")
+    r = trainPBatch(n-1,ntrain,restinput,newnet,resttarget,lr)
     r
   end
   def dotP(vet,matrix) do
@@ -221,21 +234,21 @@ defmodule NN do
     [hr|tr] = tasks
     r1 = Task.await(hr)
     List.foldr(tr, r1, fn(task,{nn2,wd2,erro2,acc2}) -> {nn1,wd1,erro1,acc1} = Task.await task
-                                                        IO.inspect erro2
-                                                        IO.inspect acc2
+                                                        #IO.inspect erro2
+                                                        #IO.inspect acc2
                                                         {sumNNs(nn1,nn2),wd1,erro1+erro2,acc1+acc2} end)
   end
   def run_batchWL(size,input,weights,target,lr) do
     list = slice_entries(size,input,target)
-    tasks = Enum.map(list, fn({i1,t1}) -> WL.send_job({i1,weights,t1,lr}) end)
+    tasks = Enum.map(list, fn({i1,t1}) -> WL.send_job({size,i1,weights,t1,lr}) end)
     #results = Enum.map(tasks,&Task.await/1)
     [hr|tr] = tasks
     r1 = WL.get_result(hr)
     List.foldr(tr, r1, fn(task,{nn2,wd2,erro2,acc2}) -> {nn1,wd1,erro1,acc1} = WL.get_result task
-                                                        IO.inspect erro2
-                                                        IO.inspect acc2
-                                                        IO.inspect erro1
-                                                        IO.inspect acc1
+                                                        #IO.inspect erro2
+                                                        #IO.inspect acc2
+                                                        #IO.inspect erro1
+                                                        #IO.inspect acc1
                                                         {sumNNs(nn1,nn2),wd1,erro1+erro2,acc1+acc2} end)
   end
   def sumNNs([w1],[w2]) do
@@ -247,6 +260,15 @@ defmodule NN do
     rest = sumNNs(t1,t2)
     [w3|rest]
 
+  end
+  def divNN([w],n) do
+    nw =Matrex.divide(w,n)
+    [nw]
+  end
+  def divNN([w|t],n) do
+    nw =Matrex.divide(w,n)
+    nt = divNN(t,n)
+    [nw|nt]
   end
   def slice_entries(1,input,target)do
     input1 = Matrex.row(input,1)
@@ -316,9 +338,13 @@ defmodule WL do
     #send({:work_list_server,:"main@Satanas-666"}, {:idle, self()})
     send(:work_list_server, {:idle, self()})
     receive do
-       {:work, clientpid, workid,{ input1,weights,target1,lr}} ->
-              r=NN.runNet( input1,weights,target1,lr)
-              send(clientpid,{:workresult, workid, r})
+       {:work, clientpid, workid,{size ,input1,weights,target1,lr}} ->
+              {net,wd,error,acc}=NN.runNet( input1,weights,target1,lr)
+              newNet = NN.divNN(net,size)
+              nwd = wd/size
+              nerror = error/size
+              nacc = acc/size
+              send(clientpid,{:workresult, workid, {newNet,nwd,nerror,nacc}})
               worker()
     end
   end
@@ -424,7 +450,7 @@ end
 #nn = [w0_,w1_]
 
 inputSize = 784 #pixels per image
-hiddenSize = 360#180#40#720#360#40#360#180#40
+hiddenSize = 180#360#180#40#720#360#40#360#180#40
 outputSize = 10
 alpha = 0.005
 nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
@@ -473,11 +499,14 @@ target1 = labels[1]
 #{time,{newnet,error,correct}}=:timer.tc(&NN.trainNN/5,[100,images,nn,labels,alpha])
 #IO.puts ("time: #{time/(1_000_000)}")
 
-WL.testSystem(10)
+WL.testSystem(8)
 
-#{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[10,100,images,nn,labels,alpha])
+#{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[100,1000,images,nn,labels,alpha])
 
-{time,{newNet,wd,errorFinal,correct} } = :timer.tc(&NN.loopPBatch/6,[10,100,images,nn,labels,alpha])
+{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loopBatch/7,[100,10,100,images,nn,labels,alpha])
+#{time,{newNet,wd,errorFinal,correct} } = :timer.tc(&NN.trainPBatch/6,[10,100,images,nn,labels,alpha])
+
+#{time,{newnet,error,correct}}=:timer.tc(&NN.trainNN/5,[1000,images,nn,labels,alpha])
 
 IO.puts ("time: #{time/(1_000_000)}")
 
