@@ -1,12 +1,12 @@
 Mix.install([
-  {:nx, "~> 0.4.0"},
-  {:torchx, "~> 0.4.0"},
-  {:exla, "~> 0.4"},
+ # {:nx, "~> 0.4.0"},
+  #{:torchx, "~> 0.4.0"},
+  #{:exla, "~> 0.4"},
   {:matrex, "~> 0.6"}
 ])
 
 
-Nx.default_backend(Torchx.Backend)
+#Nx.default_backend(Torchx.Backend)
 #Nx.default_backend(EXLA.Backend)
 # Sets the global compilation options
 #Nx.Defn.global_default_options(compiler: EXLA)
@@ -100,8 +100,27 @@ defmodule NN do
     {newnet,error,correct}=trainNN(ntrain,input,nn,target,lr)
    # IO.puts "Error"
     #IO.inspect error
-    IO.puts("I #{n} error: #{Nx.to_number(error)/ntrain} Acc: #{correct/ntrain}")
+    IO.puts("I #{n} error: #{(error)/ntrain} Acc: #{correct/ntrain}")
     r = loop(n-1,ntrain,input,newnet,target,lr)
+    r
+  end
+  def loopPBatch(1,ntrain,input,nn,target,lr) do
+    {newnet,wd1,error,correct}= run_batchWL(ntrain,input,nn,target,lr)
+    IO.puts("I #{1} error: #{error/ntrain} Acc: #{correct/ntrain}")
+    {newnet,wd1,error,correct}
+  end
+  def loopPBatch(n,ntrain, input,nn,target,lr) do
+    {newnet,wd1,error,correct}=run_batchWL(ntrain,input,nn,target,lr)
+   # IO.puts "Error"
+    #IO.inspect error
+    {il,ic}=Matrex.size(input)
+    {tl,tc}=Matrex.size(target)
+ #   IO.inspect {il,ic}
+  #  IO.inspect {tl,tc}
+    restinput = Matrex.submatrix(input,(ntrain+1)..il,1..ic)
+    resttarget = Matrex.submatrix(target,(ntrain+1)..tl,1..tc)
+    IO.puts("I #{n} error: #{(error)/ntrain} Acc: #{correct/ntrain}")
+    r = loopPBatch(n-1,ntrain,restinput,newnet,resttarget,lr)
     r
   end
   def dotP(vet,matrix) do
@@ -196,12 +215,27 @@ defmodule NN do
     [col|cols]
   end
   def run_batch(size,input,weights,target,lr) do
-    tasks = slice_entries(size,input,target,weights,lr)
+    tasks = slice_entries_p(size,input,target,weights,lr)
     #tasks = Enum.map(list, fn({i1,t1}) -> Task.async(fn -> NN.runNet(i1,weights,t1,lr)end) end)
     #results = Enum.map(tasks,&Task.await/1)
     [hr|tr] = tasks
     r1 = Task.await(hr)
     List.foldr(tr, r1, fn(task,{nn2,wd2,erro2,acc2}) -> {nn1,wd1,erro1,acc1} = Task.await task
+                                                        IO.inspect erro2
+                                                        IO.inspect acc2
+                                                        {sumNNs(nn1,nn2),wd1,erro1+erro2,acc1+acc2} end)
+  end
+  def run_batchWL(size,input,weights,target,lr) do
+    list = slice_entries(size,input,target)
+    tasks = Enum.map(list, fn({i1,t1}) -> WL.send_job({i1,weights,t1,lr}) end)
+    #results = Enum.map(tasks,&Task.await/1)
+    [hr|tr] = tasks
+    r1 = WL.get_result(hr)
+    List.foldr(tr, r1, fn(task,{nn2,wd2,erro2,acc2}) -> {nn1,wd1,erro1,acc1} = WL.get_result task
+                                                        IO.inspect erro2
+                                                        IO.inspect acc2
+                                                        IO.inspect erro1
+                                                        IO.inspect acc1
                                                         {sumNNs(nn1,nn2),wd1,erro1+erro2,acc1+acc2} end)
   end
   def sumNNs([w1],[w2]) do
@@ -214,13 +248,30 @@ defmodule NN do
     [w3|rest]
 
   end
-  def slice_entries(1,input,target,weights,lr)do
+  def slice_entries(1,input,target)do
+    input1 = Matrex.row(input,1)
+    target1 = Matrex.row(target,1)
+    #task =Task.async(fn -> NN.runNet(input1,weights,target1,lr)end)
+    [{input1,target1}]
+  end
+  def slice_entries(n,input,target)do
+    input1 = Matrex.row(input,1)
+    target1 = Matrex.row(target,1)
+    #task =Task.async(fn -> NN.runNet(input1,weights,target1,lr)end)
+    {il,ic}=Matrex.size(input)
+    {tl,tc}=Matrex.size(target)
+    restinput = Matrex.submatrix(input,2..il,1..ic)
+    resttarget = Matrex.submatrix(target,2..tl,1..tc)
+    slices = slice_entries(n-1,restinput,resttarget)
+    [{input1,target1}|slices]
+  end
+  def slice_entries_p(1,input,target,weights,lr)do
     input1 = Matrex.row(input,1)
     target1 = Matrex.row(target,1)
     task =Task.async(fn -> NN.runNet(input1,weights,target1,lr)end)
     [task]
   end
-  def slice_entries(n,input,target,weights,lr)do
+  def slice_entries_p(n,input,target,weights,lr)do
     input1 = Matrex.row(input,1)
     target1 = Matrex.row(target,1)
     task =Task.async(fn -> NN.runNet(input1,weights,target1,lr)end)
@@ -228,77 +279,92 @@ defmodule NN do
     {tl,tc}=Matrex.size(target)
     restinput = Matrex.submatrix(input,2..il,1..ic)
     resttarget = Matrex.submatrix(target,2..tl,1..tc)
-    slices = slice_entries(n-1,restinput,resttarget,weights,lr)
+    slices = slice_entries_p(n-1,restinput,resttarget,weights,lr)
     [task|slices]
   end
 end
 
+defmodule WL do
+  def work_list_server(n) do
+    receive do
+      {:addWork, clientpid, work} ->
+        send(clientpid, {:workAdded , n})
+        receive do
+          {:idle, workerpid} ->
+            send(workerpid,{:work, clientpid, n, work})
+            work_list_server(n+1)
+        end
+    end
+  end
+  def send_job(work) do
+    #send({:work_list_server,:"main@Satanas-666"},{:addWork, self(),work})
+    send(:work_list_server,{:addWork, self(),work})
+    receive do
+      {:workAdded , n} -> n
+    end
+  end
+  def get_result(workid) do
+     receive do
+        {:workresult,workid,r} -> r
+     end
+  end
+  def init_work_list_server() do
+    pid = spawn_link(fn -> work_list_server(0) end)
+    Process.register(pid, :work_list_server)
+  end
+  def worker() do
+    #send({:work_list_server,:"main@Satanas-666"}, {:idle, self()})
+    send(:work_list_server, {:idle, self()})
+    receive do
+       {:work, clientpid, workid,{ input1,weights,target1,lr}} ->
+              r=NN.runNet( input1,weights,target1,lr)
+              send(clientpid,{:workresult, workid, r})
+              worker()
+    end
+  end
+  def init_workers(1) do
+    spawn_link(fn -> WL.worker()end)
+  end
+  def init_workers(n) do
+    spawn_link(fn -> WL.worker()end)
+    init_workers(n-1)
+  end
+  def testSystem(n)do
+    WL.init_work_list_server()
+    init_workers(n)
+   # Node.spawn_link(:"core1@Satanas-666",fn -> WL.worker()end)
+   # Node.spawn_link(:"core2@Satanas-666",fn -> WL.worker()end)
+   # Node.spawn_link(:"core3@Satanas-666",fn -> WL.worker()end)
 
-#inputSize = 3
-#hiddenSize = 4
-#outputSize = 1
-alpha = 0.005
-#weights_0_1 = Nx.tensor ( [[-0.16595599,  0.40763847, -0.99977125],
-#                            [-0.39533485, -0.70648822, -0.81532281],
-#                            [-0.62747958 ,-0.34188906 ,-0.20646505]]) #NN.newDenseLayer(inputSize,hiddenSize,:relu)
-#
+  end
+  def test() do
+    WL.init_work_list_server()
+    IO.puts("server")
+    spawn(fn -> WL.worker()end)
+    spawn(fn -> WL.worker()end)
+    spawn(fn -> WL.worker()end)
+    spawn(fn -> WL.worker()end)
+    IO.puts("worker")
+    task1=WL.send_job(1)
+    task2=WL.send_job(2)
+    task3=WL.send_job(3)
+    task4=WL.send_job(4)
+    result1 = WL.get_result(task1)
+    IO.inspect(result1)
+    result2 = WL.get_result(task2)
+    IO.inspect(result2)
+    result3 = WL.get_result(task3)
+    IO.inspect(result3)
+    raise "hell"
 
-#weights_1_2 = Nx.tensor([[ 0.07763347],
-#                          [-0.16161097],
-#                          [ 0.370439  ]])#NN.newDenseLayer(hiddenSize,outputSize,:relu)
-
-
-#w0_ = Matrex.load("w01.csv")
-#w1_ = Matrex.load("w12.csv")
-#nn = [w0_,w1_]
-
-inputSize = 784 #pixels per image
-hiddenSize = 180#40#720#360#40#360#180#40
-outputSize = 10
-alpha = 0.005
-nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
-      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
-
-#[wh|wt] =nn
-
-#IO.inspect(wh)
-
-#nn = [weights_0_1,weights_1_2]
+  end
 
 
-#IO.inspect(w0_)
-#IO.inspect(w1_)
+end
+
+#WL.test()
 
 
-sl_input = Matrex.new([  [ 1, 0, 1],
-                        [ 0, 1, 1],
-                        [ 0, 0, 1],
-                        [ 1, 1, 1] ])
-
-sl_target = Matrex.transpose(Matrex.new([[1, 1, 0, 0]]))
-
-
-
-images = Matrex.load("imgMNIST.csv")
-labels = Matrex.load("tarMNIST.csv")
-
-input1 = images[1]
-target1 = labels[1]
-#r = NN.dotPSize(5,input1,wh)
-
-#IO.inspect input1
-#IO.inspect wh
-#IO.inspect r
-#raise "ok"
-#IO.inspect(input1)
-#IO.inspect(target1)
-#raise "o"
-
-#{newNet,d,errorFinal,correct} = NN.runNet(input1,nn2,target1,alpha)
-#time1 = Time.utc_now()
-#{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
-
-#time1 = Time.utc_now()
 defmodule Bench do
   def execNN(1,input1,nn,target1,alpha) do
     #task1 = Task.async(fn -> NN.runNet(input1,nn,target1,alpha) end)
@@ -326,6 +392,71 @@ defmodule Bench do
   end
 end
 
+
+
+#inputSize = 3
+#hiddenSize = 4
+#outputSize = 1
+#alpha = 0.005
+#weights_0_1 = Nx.tensor ( [[-0.16595599,  0.40763847, -0.99977125],
+#                            [-0.39533485, -0.70648822, -0.81532281],
+#                            [-0.62747958 ,-0.34188906 ,-0.20646505]]) #NN.newDenseLayer(inputSize,hiddenSize,:relu)
+#
+
+#weights_1_2 = Nx.tensor([[ 0.07763347],
+#                          [-0.16161097],
+#                          [ 0.370439  ]])#NN.newDenseLayer(hiddenSize,outputSize,:relu)
+
+
+#nn = [weights_0_1,weights_1_2]
+
+#sl_input = Matrex.new([  [ 1, 0, 1],
+#                        [ 0, 1, 1],
+#                        [ 0, 0, 1],
+#                        [ 1, 1, 1] ])
+
+#sl_target = Matrex.transpose(Matrex.new([[1, 1, 0, 0]]))
+
+
+
+#w0_ = Matrex.load("w01.csv")
+#w1_ = Matrex.load("w12.csv")
+#nn = [w0_,w1_]
+
+inputSize = 784 #pixels per image
+hiddenSize = 360#180#40#720#360#40#360#180#40
+outputSize = 10
+alpha = 0.005
+nn = [NN.newDenseLayer(inputSize,hiddenSize,:relu),
+      NN.newDenseLayer(hiddenSize,outputSize,:relu)]
+
+#[wh|wt] =nn
+
+
+images = Matrex.load("imgMNIST.csv")
+labels = Matrex.load("tarMNIST.csv")
+
+input1 = images[1]
+target1 = labels[1]
+
+#IO.inspect images
+#IO.inspect labels
+#raise "hell"
+#r = NN.dotPSize(5,input1,wh)
+
+#IO.inspect input1
+#IO.inspect wh
+#IO.inspect r
+#raise "ok"
+#IO.inspect(input1)
+#IO.inspect(target1)
+#raise "o"
+
+#{newNet,d,errorFinal,correct} = NN.runNet(input1,nn2,target1,alpha)
+#time1 = Time.utc_now()
+#{newNet,errorFinal,correct} = NN.trainNN(1000,images,nn,labels,alpha)
+
+#time1 = Time.utc_now()
 #{time,r} = :timer.tc(&Bench.execNNp/6,[100,[],input1,nn,target1,alpha])
 #{time,r} = :timer.tc(&Bench.execNN/5,[100,input1,nn,target1,alpha])
 #IO.puts ("time: #{(time)/(1_000_000)}")
@@ -334,13 +465,26 @@ end
 
 #{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[1,1000,images,nn,labels,alpha])
 
+#WL.testSystem()
 
-#{time,r}=:timer.tc(&NN.run_batch/5,[1000,images,nn,labels,alpha])
+#{time,r}=:timer.tc(&NN.run_batchWL/5,[100,images,nn,labels,alpha])
 
-{time,{newnet,error,correct}}=:timer.tc(&NN.trainNN/5,[1000,images,nn,labels,alpha])
+
+#{time,{newnet,error,correct}}=:timer.tc(&NN.trainNN/5,[100,images,nn,labels,alpha])
+#IO.puts ("time: #{time/(1_000_000)}")
+
+WL.testSystem(10)
+
+#{time,{newNet,errorFinal,correct} } = :timer.tc(&NN.loop/6,[10,100,images,nn,labels,alpha])
+
+{time,{newNet,wd,errorFinal,correct} } = :timer.tc(&NN.loopPBatch/6,[10,100,images,nn,labels,alpha])
+
 IO.puts ("time: #{time/(1_000_000)}")
+
+
 #timef = Time.diff(time2,time1)
 
+Process.exit(self(),:ok)
 
 
 
